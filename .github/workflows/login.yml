@@ -62,15 +62,28 @@ jobs:
             
             console.log('访问登录页面...');
             const response = await page.goto('https://searcade.userveria.com/login', {
-              waitUntil: 'networkidle2',
+              waitUntil: 'domcontentloaded',
               timeout: 60000
             });
             
             console.log('页面响应状态:', response.status());
             console.log('页面URL:', page.url());
             
-            // 等待页面完全加载
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            // 等待页面完全加载，包括JavaScript
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            
+            // 尝试等待页面完全渲染
+            await page.evaluate(() => {
+              return new Promise((resolve) => {
+                if (document.readyState === 'complete') {
+                  resolve();
+                } else {
+                  window.addEventListener('load', resolve);
+                }
+              });
+            });
+            
+            console.log('页面加载完成，开始分析页面内容...');
             
             // 获取页面标题和内容，用于调试
             const title = await page.title();
@@ -123,12 +136,40 @@ jobs:
             
             console.log('等待登录表单加载...');
             
-            // 首先尝试等待页面中的任何输入框
-            try {
-              await page.waitForSelector('input', { timeout: 10000 });
-              console.log('页面已加载输入框');
-            } catch (e) {
-              console.log('页面没有找到任何输入框');
+            // 等待页面中的任何输入框出现，增加等待时间
+            let inputFound = false;
+            for (let i = 0; i < 10; i++) {
+              try {
+                await page.waitForSelector('input', { timeout: 2000 });
+                inputFound = true;
+                console.log('页面已加载输入框');
+                break;
+              } catch (e) {
+                console.log(`第${i + 1}次尝试：未找到输入框，等待2秒后重试...`);
+                await new Promise(resolve => setTimeout(resolve, 2000));
+              }
+            }
+            
+            if (!inputFound) {
+              console.log('❌ 多次尝试后仍未找到任何输入框');
+              // 显示页面HTML内容用于调试
+              const pageContent = await page.content();
+              console.log('页面HTML内容（前5000字符）:');
+              console.log(pageContent.substring(0, 5000));
+              
+              // 检查是否有JavaScript错误
+              const jsErrors = await page.evaluate(() => {
+                const errors = [];
+                const originalError = console.error;
+                console.error = function(...args) {
+                  errors.push(args.join(' '));
+                  originalError.apply(console, args);
+                };
+                return errors;
+              });
+              console.log('JavaScript错误:', jsErrors);
+              
+              throw new Error('页面未加载任何输入框');
             }
             
             // 使用多种选择器尝试，增加等待时间
