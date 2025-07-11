@@ -49,10 +49,57 @@ jobs:
             await page.waitForLoadState('networkidle');
             
             // 额外等待，确保动态内容加载完成
-            await page.waitForTimeout(3000);
+            await page.waitForTimeout(5000);
             
-            console.log('查找邮箱输入框...');
-            // 尝试多种选择器
+            console.log('页面加载完成，开始调试...');
+            
+            // 获取页面标题
+            const title = await page.title();
+            console.log('页面标题:', title);
+            
+            // 获取当前URL
+            const currentUrl = page.url();
+            console.log('当前URL:', currentUrl);
+            
+            // 截图保存（用于调试）
+            await page.screenshot({ path: 'login-page.png' });
+            console.log('已保存页面截图');
+            
+            // 获取页面HTML内容
+            const htmlContent = await page.content();
+            console.log('页面HTML长度:', htmlContent.length);
+            console.log('页面HTML内容（前2000字符）:');
+            console.log(htmlContent.substring(0, 2000));
+            
+            // 检查是否包含预期的输入框
+            const hasEmailInput = htmlContent.includes('id="email_input"');
+            const hasPasswordInput = htmlContent.includes('id="password_input"');
+            console.log('页面是否包含email_input:', hasEmailInput);
+            console.log('页面是否包含password_input:', hasPasswordInput);
+            
+            // 获取所有input元素
+            const inputs = await page.locator('input').all();
+            console.log('页面input元素数量:', inputs.length);
+            
+            for (let i = 0; i < inputs.length; i++) {
+              const input = inputs[i];
+              const id = await input.getAttribute('id');
+              const name = await input.getAttribute('name');
+              const type = await input.getAttribute('type');
+              const className = await input.getAttribute('class');
+              console.log(`Input ${i}: id="${id}", name="${name}", type="${type}", class="${className}"`);
+            }
+            
+            // 如果找不到输入框，可能是页面结构不同，尝试继续
+            if (inputs.length === 0) {
+              console.log('❌ 页面没有任何input元素');
+              process.exit(1);
+            }
+            
+            console.log('尝试查找邮箱输入框...');
+            let emailInput = null;
+            
+            // 按顺序尝试不同的选择器
             const emailSelectors = [
               '#email_input',
               'input[name="email"]',
@@ -60,73 +107,93 @@ jobs:
               'input[type="text"]'
             ];
             
-            let emailFound = false;
             for (const selector of emailSelectors) {
               try {
-                await page.waitForSelector(selector, { timeout: 5000 });
-                console.log(`找到邮箱输入框: ${selector}`);
-                await page.fill(selector, process.env.LOGIN_EMAIL);
-                emailFound = true;
-                break;
+                const element = page.locator(selector);
+                const count = await element.count();
+                console.log(`选择器 ${selector} 找到 ${count} 个元素`);
+                
+                if (count > 0) {
+                  emailInput = element.first();
+                  console.log(`✅ 找到邮箱输入框: ${selector}`);
+                  break;
+                }
               } catch (e) {
-                console.log(`未找到邮箱输入框: ${selector}`);
+                console.log(`选择器 ${selector} 出错:`, e.message);
               }
             }
             
-            if (!emailFound) {
-              console.log('❌ 未找到邮箱输入框');
+            if (!emailInput) {
+              console.log('❌ 所有选择器都未找到邮箱输入框');
               process.exit(1);
             }
             
+            console.log('填写邮箱...');
+            await emailInput.fill(process.env.LOGIN_EMAIL);
+            
             console.log('查找密码输入框...');
+            let passwordInput = null;
+            
             const passwordSelectors = [
               '#password_input',
               'input[name="password"]',
               'input[type="password"]'
             ];
             
-            let passwordFound = false;
             for (const selector of passwordSelectors) {
               try {
-                await page.waitForSelector(selector, { timeout: 5000 });
-                console.log(`找到密码输入框: ${selector}`);
-                await page.fill(selector, process.env.LOGIN_PASSWORD);
-                passwordFound = true;
-                break;
+                const element = page.locator(selector);
+                const count = await element.count();
+                console.log(`选择器 ${selector} 找到 ${count} 个元素`);
+                
+                if (count > 0) {
+                  passwordInput = element.first();
+                  console.log(`✅ 找到密码输入框: ${selector}`);
+                  break;
+                }
               } catch (e) {
-                console.log(`未找到密码输入框: ${selector}`);
+                console.log(`选择器 ${selector} 出错:`, e.message);
               }
             }
             
-            if (!passwordFound) {
-              console.log('❌ 未找到密码输入框');
+            if (!passwordInput) {
+              console.log('❌ 所有选择器都未找到密码输入框');
               process.exit(1);
             }
             
-            console.log('查找登录按钮...');
+            console.log('填写密码...');
+            await passwordInput.fill(process.env.LOGIN_PASSWORD);
+            
+            console.log('查找并点击登录按钮...');
             const buttonSelectors = [
               'button[type="submit"]',
               'input[type="submit"]',
               'button:has-text("Login")',
               'button:has-text("登录")',
-              '.btn-primary'
+              '.btn-primary',
+              'button'
             ];
             
-            let buttonFound = false;
+            let buttonClicked = false;
             for (const selector of buttonSelectors) {
               try {
-                await page.waitForSelector(selector, { timeout: 5000 });
-                console.log(`找到登录按钮: ${selector}`);
-                await page.click(selector);
-                buttonFound = true;
-                break;
+                const element = page.locator(selector);
+                const count = await element.count();
+                console.log(`按钮选择器 ${selector} 找到 ${count} 个元素`);
+                
+                if (count > 0) {
+                  await element.first().click();
+                  console.log(`✅ 点击了按钮: ${selector}`);
+                  buttonClicked = true;
+                  break;
+                }
               } catch (e) {
-                console.log(`未找到登录按钮: ${selector}`);
+                console.log(`按钮选择器 ${selector} 出错:`, e.message);
               }
             }
             
-            if (!buttonFound) {
-              console.log('❌ 未找到登录按钮，尝试按Enter键');
+            if (!buttonClicked) {
+              console.log('未找到登录按钮，尝试按Enter键...');
               await page.keyboard.press('Enter');
             }
             
@@ -134,13 +201,13 @@ jobs:
             await page.waitForLoadState('networkidle');
             
             console.log('检查登录结果...');
-            const currentUrl = page.url();
-            console.log('当前URL:', currentUrl);
+            const finalUrl = page.url();
+            console.log('最终URL:', finalUrl);
             
-            if (currentUrl.includes('searcade.com/en/admin')) {
+            if (finalUrl.includes('searcade.com/en/admin')) {
               console.log('✅ 登录成功！');
             } else {
-              console.log('❌ 登录失败，当前URL:', currentUrl);
+              console.log('❌ 登录失败，当前URL:', finalUrl);
               process.exit(1);
             }
             
