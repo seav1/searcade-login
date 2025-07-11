@@ -43,7 +43,7 @@ jobs:
           
           try {
             console.log('访问登录页面...');
-            await page.goto('https://searcade.userveria.com/login');
+            await page.goto('https://searcade.com/en/admin');
             
             console.log('等待页面加载...');
             await page.waitForLoadState('networkidle');
