@@ -48,14 +48,87 @@ jobs:
             console.log('等待页面加载...');
             await page.waitForLoadState('networkidle');
             
-            console.log('查找并填写邮箱...');
-            await page.fill('input[name="email"]', process.env.LOGIN_EMAIL);
+            // 额外等待，确保动态内容加载完成
+            await page.waitForTimeout(3000);
             
-            console.log('查找并填写密码...');
-            await page.fill('input[name="password"]', process.env.LOGIN_PASSWORD);
+            console.log('查找邮箱输入框...');
+            // 尝试多种选择器
+            const emailSelectors = [
+              '#email_input',
+              'input[name="email"]',
+              'input[type="email"]',
+              'input[type="text"]'
+            ];
             
-            console.log('点击登录按钮...');
-            await page.click('button[type="submit"]');
+            let emailFound = false;
+            for (const selector of emailSelectors) {
+              try {
+                await page.waitForSelector(selector, { timeout: 5000 });
+                console.log(`找到邮箱输入框: ${selector}`);
+                await page.fill(selector, process.env.LOGIN_EMAIL);
+                emailFound = true;
+                break;
+              } catch (e) {
+                console.log(`未找到邮箱输入框: ${selector}`);
+              }
+            }
+            
+            if (!emailFound) {
+              console.log('❌ 未找到邮箱输入框');
+              process.exit(1);
+            }
+            
+            console.log('查找密码输入框...');
+            const passwordSelectors = [
+              '#password_input',
+              'input[name="password"]',
+              'input[type="password"]'
+            ];
+            
+            let passwordFound = false;
+            for (const selector of passwordSelectors) {
+              try {
+                await page.waitForSelector(selector, { timeout: 5000 });
+                console.log(`找到密码输入框: ${selector}`);
+                await page.fill(selector, process.env.LOGIN_PASSWORD);
+                passwordFound = true;
+                break;
+              } catch (e) {
+                console.log(`未找到密码输入框: ${selector}`);
+              }
+            }
+            
+            if (!passwordFound) {
+              console.log('❌ 未找到密码输入框');
+              process.exit(1);
+            }
+            
+            console.log('查找登录按钮...');
+            const buttonSelectors = [
+              'button[type="submit"]',
+              'input[type="submit"]',
+              'button:has-text("Login")',
+              'button:has-text("登录")',
+              '.btn-primary'
+            ];
+            
+            let buttonFound = false;
+            for (const selector of buttonSelectors) {
+              try {
+                await page.waitForSelector(selector, { timeout: 5000 });
+                console.log(`找到登录按钮: ${selector}`);
+                await page.click(selector);
+                buttonFound = true;
+                break;
+              } catch (e) {
+                console.log(`未找到登录按钮: ${selector}`);
+              }
+            }
+            
+            if (!buttonFound) {
+              console.log('❌ 未找到登录按钮，尝试按Enter键');
+              await page.keyboard.press('Enter');
+            }
             
             console.log('等待登录完成...');
             await page.waitForLoadState('networkidle');
