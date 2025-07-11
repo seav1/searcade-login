@@ -26,7 +26,7 @@ jobs:
     - name: Install dependencies
       run: |
         npm init -y
-        npm install puppeteer
+        npm install puppeteer@19.11.1
         
     - name: Auto Login
       env:
@@ -70,7 +70,7 @@ jobs:
             console.log('页面URL:', page.url());
             
             // 等待页面完全加载
-            await page.waitForTimeout(3000);
+            await new Promise(resolve => setTimeout(resolve, 3000));
             
             // 获取页面标题和内容，用于调试
             const title = await page.title();
@@ -164,7 +164,7 @@ jobs:
             
             console.log('等待页面跳转...');
             // 等待跳转到管理页面或登录完成
-            await page.waitForTimeout(5000);
+            await new Promise(resolve => setTimeout(resolve, 5000));
             
             // 检查是否跳转到管理页面
             const currentUrl = page.url();
