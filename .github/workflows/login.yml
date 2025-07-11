@@ -88,8 +88,8 @@ jobs:
             console.log(pageContent.substring(0, 3000));
             
             // 检查是否被重定向
-            const currentUrl = page.url();
-            console.log('当前实际URL:', currentUrl);
+            const initialUrl = page.url();
+            console.log('当前实际URL:', initialUrl);
             
             // 检查是否有任何输入框
             const allInputs = await page.$eval('input', inputs => 
@@ -113,8 +113,8 @@ jobs:
               console.log('页面是否包含登录相关文本:', hasLoginText);
               
               // 检查是否需要先访问其他页面
-              if (currentUrl !== 'https://searcade.userveria.com/login') {
-                console.log('页面被重定向到:', currentUrl);
+              if (initialUrl !== 'https://searcade.userveria.com/login') {
+                console.log('页面被重定向到:', initialUrl);
                 throw new Error('页面被重定向，无法访问登录页面');
               }
               
