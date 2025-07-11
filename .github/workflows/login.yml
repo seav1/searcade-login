@@ -46,7 +46,9 @@ jobs:
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
-                '--disable-gpu'
+                '--disable-gpu',
+                '--disable-web-security',
+                '--disable-features=VizDisplayCompositor'
               ]
             });
             
@@ -55,31 +57,108 @@ jobs:
             // 设置用户代理
             await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
             
+            // 设置页面大小
+            await page.setViewport({ width: 1280, height: 720 });
+            
             console.log('访问登录页面...');
-            await page.goto('https://searcade.userveria.com/login', {
+            const response = await page.goto('https://searcade.userveria.com/login', {
               waitUntil: 'networkidle2',
-              timeout: 30000
+              timeout: 60000
             });
             
+            console.log('页面响应状态:', response.status());
+            console.log('页面URL:', page.url());
+            
+            // 等待页面完全加载
+            await page.waitForTimeout(3000);
+            
+            // 获取页面标题和内容，用于调试
+            const title = await page.title();
+            console.log('页面标题:', title);
+            
+            // 检查页面是否包含登录表单
+            const pageContent = await page.content();
+            const hasEmailInput = pageContent.includes('name="email"');
+            const hasPasswordInput = pageContent.includes('name="password"');
+            console.log('页面是否包含email输入框:', hasEmailInput);
+            console.log('页面是否包含password输入框:', hasPasswordInput);
+            
+            if (!hasEmailInput || !hasPasswordInput) {
+              console.log('页面HTML内容片段:');
+              console.log(pageContent.substring(0, 2000) + '...');
+            }
+            
             console.log('等待登录表单加载...');
-            await page.waitForSelector('input[name="email"]', { timeout: 10000 });
-            await page.waitForSelector('input[name="password"]', { timeout: 10000 });
+            // 使用多种选择器尝试
+            const emailSelector = await Promise.race([
+              page.waitForSelector('input[name="email"]', { timeout: 15000 }).then(() => 'input[name="email"]'),
+              page.waitForSelector('#email_input', { timeout: 15000 }).then(() => '#email_input'),
+              page.waitForSelector('input[type="text"]', { timeout: 15000 }).then(() => 'input[type="text"]')
+            ]).catch(() => null);
+            
+            const passwordSelector = await Promise.race([
+              page.waitForSelector('input[name="password"]', { timeout: 15000 }).then(() => 'input[name="password"]'),
+              page.waitForSelector('#password_input', { timeout: 15000 }).then(() => '#password_input'),
+              page.waitForSelector('input[type="password"]', { timeout: 15000 }).then(() => 'input[type="password"]')
+            ]).catch(() => null);
+            
+            if (!emailSelector || !passwordSelector) {
+              console.log('❌ 无法找到登录表单元素');
+              console.log('邮箱输入框选择器:', emailSelector);
+              console.log('密码输入框选择器:', passwordSelector);
+              throw new Error('登录表单未找到');
+            }
+            
+            console.log('找到登录表单元素');
+            console.log('邮箱输入框选择器:', emailSelector);
+            console.log('密码输入框选择器:', passwordSelector);
             
             console.log('填写登录信息...');
-            await page.type('input[name="email"]', process.env.LOGIN_EMAIL);
-            await page.type('input[name="password"]', process.env.LOGIN_PASSWORD);
+            // 清空输入框并填写
+            await page.click(emailSelector);
+            await page.keyboard.down('Control');
+            await page.keyboard.press('KeyA');
+            await page.keyboard.up('Control');
+            await page.type(emailSelector, process.env.LOGIN_EMAIL);
             
-            console.log('点击登录按钮...');
-            // 查找并点击登录按钮（可能的选择器）
-            const loginButton = await page.$('button[type="submit"]') || 
-                               await page.$('input[type="submit"]') || 
-                               await page.$('button:contains("登录")') || 
-                               await page.$('button:contains("Login")');
+            await page.click(passwordSelector);
+            await page.keyboard.down('Control');
+            await page.keyboard.press('KeyA');
+            await page.keyboard.up('Control');
+            await page.type(passwordSelector, process.env.LOGIN_PASSWORD);
+            
+            console.log('查找登录按钮...');
+            // 查找并点击登录按钮（多种可能的选择器）
+            const loginButtonSelectors = [
+              'button[type="submit"]',
+              'input[type="submit"]',
+              'button:contains("登录")',
+              'button:contains("Login")',
+              'button:contains("Sign in")',
+              '.btn-primary',
+              '.login-btn',
+              'form button',
+              'button'
+            ];
+            
+            let loginButton = null;
+            for (const selector of loginButtonSelectors) {
+              try {
+                loginButton = await page.$(selector);
+                if (loginButton) {
+                  console.log('找到登录按钮，选择器:', selector);
+                  break;
+                }
+              } catch (e) {
+                // 继续尝试下一个选择器
+              }
+            }
             
             if (loginButton) {
+              console.log('点击登录按钮...');
               await loginButton.click();
             } else {
-              // 如果找不到按钮，尝试按Enter键
+              console.log('未找到登录按钮，尝试按Enter键提交表单...');
               await page.keyboard.press('Enter');
             }
             
