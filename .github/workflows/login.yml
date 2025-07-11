@@ -23,10 +23,11 @@ jobs:
       with:
         node-version: '18'
         
-    - name: Install dependencies
+    - name: Install Playwright
       run: |
         npm init -y
-        npm install puppeteer
+        npm install playwright
+        npx playwright install chromium
         
     - name: Auto Login
       env:
@@ -34,115 +35,49 @@ jobs:
         LOGIN_PASSWORD: ${{ secrets.LOGIN_PASSWORD }}
       run: |
         cat > login.js << 'EOF'
-        const puppeteer = require('puppeteer');
+        const { chromium } = require('playwright');
         
         (async () => {
-          let browser;
+          const browser = await chromium.launch();
+          const page = await browser.newPage();
+          
           try {
-            console.log('启动浏览器...');
-            browser = await puppeteer.launch({
-              headless: true,
-              args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu'
-              ]
-            });
-            
-            const page = await browser.newPage();
-            
-            // 设置用户代理
-            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
-            
             console.log('访问登录页面...');
-            await page.goto('https://searcade.com/en/admin', {
-              waitUntil: 'networkidle2',
-              timeout: 30000
-            });
+            await page.goto('https://searcade.com/en/admin');
             
-            console.log('等待登录表单加载...');
-            await page.waitForSelector('input[name="email"]', { timeout: 10000 });
-            await page.waitForSelector('input[name="password"]', { timeout: 10000 });
+            console.log('等待页面加载...');
+            await page.waitForLoadState('networkidle');
             
-            console.log('填写登录信息...');
-            await page.type('input[name="email"]', process.env.LOGIN_EMAIL);
-            await page.type('input[name="password"]', process.env.LOGIN_PASSWORD);
+            console.log('查找并填写邮箱...');
+            await page.fill('input[name="email"]', process.env.LOGIN_EMAIL);
+            
+            console.log('查找并填写密码...');
+            await page.fill('input[name="password"]', process.env.LOGIN_PASSWORD);
             
             console.log('点击登录按钮...');
-            // 查找并点击登录按钮（可能的选择器）
-            const loginButton = await page.$('button[type="submit"]') || 
-                               await page.$('input[type="submit"]') || 
-                               await page.$('button:contains("登录")') || 
-                               await page.$('button:contains("Login")');
+            await page.click('button[type="submit"]');
             
-            if (loginButton) {
-              await loginButton.click();
-            } else {
-              // 如果找不到按钮，尝试按Enter键
-              await page.keyboard.press('Enter');
-            }
+            console.log('等待登录完成...');
+            await page.waitForLoadState('networkidle');
             
-            console.log('等待页面跳转...');
-            // 等待跳转到管理页面或登录完成
-            await page.waitForTimeout(5000);
-            
-            // 检查是否跳转到管理页面
+            console.log('检查登录结果...');
             const currentUrl = page.url();
-            console.log('当前页面URL:', currentUrl);
+            console.log('当前URL:', currentUrl);
             
             if (currentUrl.includes('searcade.com/en/admin')) {
-              console.log('✅ 登录成功！已跳转到管理页面');
-              process.exit(0);
+              console.log('✅ 登录成功！');
             } else {
-              // 尝试直接访问管理页面验证登录状态
-              console.log('尝试访问管理页面验证登录状态...');
-              await page.goto('https://searcade.com/en/admin', {
-                waitUntil: 'networkidle2',
-                timeout: 30000
-              });
-              
-              const finalUrl = page.url();
-              console.log('最终页面URL:', finalUrl);
-              
-              if (finalUrl.includes('searcade.com/en/admin')) {
-                console.log('✅ 登录成功！可以访问管理页面');
-                process.exit(0);
-              } else {
-                console.log('❌ 登录失败：未能访问管理页面');
-                
-                // 检查是否有错误消息
-                const errorElements = await page.$$('.error, .alert-danger, [class*="error"]');
-                if (errorElements.length > 0) {
-                  for (const element of errorElements) {
-                    const text = await element.textContent();
-                    console.log('错误信息:', text);
-                  }
-                }
-                
-                process.exit(1);
-              }
+              console.log('❌ 登录失败，当前URL:', currentUrl);
+              process.exit(1);
             }
             
           } catch (error) {
-            console.error('登录过程中发生错误:', error.message);
+            console.error('❌ 登录失败:', error.message);
             process.exit(1);
           } finally {
-            if (browser) {
-              await browser.close();
-            }
+            await browser.close();
           }
         })();
         EOF
         
         node login.js
-        
-    - name: Login Status
-      if: always()
-      run: |
-        if [ $? -eq 0 ]; then
-          echo "登录任务执行成功"
-        else
-          echo "登录任务执行失败"
-          exit 1
-        fi
