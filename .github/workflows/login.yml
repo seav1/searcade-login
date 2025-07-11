@@ -83,24 +83,102 @@ jobs:
             console.log('页面是否包含email输入框:', hasEmailInput);
             console.log('页面是否包含password输入框:', hasPasswordInput);
             
+            // 显示更多页面信息用于调试
+            console.log('页面HTML内容（前3000字符）:');
+            console.log(pageContent.substring(0, 3000));
+            
+            // 检查是否被重定向
+            const currentUrl = page.url();
+            console.log('当前实际URL:', currentUrl);
+            
+            // 检查是否有任何输入框
+            const allInputs = await page.$eval('input', inputs => 
+              inputs.map(input => ({
+                type: input.type,
+                name: input.name,
+                id: input.id,
+                className: input.className,
+                placeholder: input.placeholder
+              }))
+            );
+            console.log('页面所有输入框:', JSON.stringify(allInputs, null, 2));
+            
             if (!hasEmailInput || !hasPasswordInput) {
-              console.log('页面HTML内容片段:');
-              console.log(pageContent.substring(0, 2000) + '...');
+              console.log('❌ 页面不包含预期的登录表单');
+              
+              // 尝试查找是否有其他登录相关的元素
+              const hasLoginText = pageContent.toLowerCase().includes('login') || 
+                                  pageContent.toLowerCase().includes('sign in') ||
+                                  pageContent.toLowerCase().includes('登录');
+              console.log('页面是否包含登录相关文本:', hasLoginText);
+              
+              // 检查是否需要先访问其他页面
+              if (currentUrl !== 'https://searcade.userveria.com/login') {
+                console.log('页面被重定向到:', currentUrl);
+                throw new Error('页面被重定向，无法访问登录页面');
+              }
+              
+              throw new Error('页面不包含登录表单');
             }
             
             console.log('等待登录表单加载...');
-            // 使用多种选择器尝试
-            const emailSelector = await Promise.race([
-              page.waitForSelector('input[name="email"]', { timeout: 15000 }).then(() => 'input[name="email"]'),
-              page.waitForSelector('#email_input', { timeout: 15000 }).then(() => '#email_input'),
-              page.waitForSelector('input[type="text"]', { timeout: 15000 }).then(() => 'input[type="text"]')
-            ]).catch(() => null);
             
-            const passwordSelector = await Promise.race([
-              page.waitForSelector('input[name="password"]', { timeout: 15000 }).then(() => 'input[name="password"]'),
-              page.waitForSelector('#password_input', { timeout: 15000 }).then(() => '#password_input'),
-              page.waitForSelector('input[type="password"]', { timeout: 15000 }).then(() => 'input[type="password"]')
-            ]).catch(() => null);
+            // 首先尝试等待页面中的任何输入框
+            try {
+              await page.waitForSelector('input', { timeout: 10000 });
+              console.log('页面已加载输入框');
+            } catch (e) {
+              console.log('页面没有找到任何输入框');
+            }
+            
+            // 使用多种选择器尝试，增加等待时间
+            let emailSelector = null;
+            let passwordSelector = null;
+            
+            // 尝试多种邮箱输入框选择器
+            const emailSelectors = [
+              'input[name="email"]',
+              '#email_input',
+              'input[type="email"]',
+              'input[type="text"]',
+              'input[placeholder*="email" i]',
+              'input[placeholder*="邮箱" i]',
+              'input[id*="email" i]',
+              'input[class*="email" i]'
+            ];
+            
+            for (const selector of emailSelectors) {
+              try {
+                await page.waitForSelector(selector, { timeout: 3000 });
+                emailSelector = selector;
+                console.log('找到邮箱输入框，选择器:', selector);
+                break;
+              } catch (e) {
+                // 继续尝试下一个选择器
+              }
+            }
+            
+            // 尝试多种密码输入框选择器
+            const passwordSelectors = [
+              'input[name="password"]',
+              '#password_input',
+              'input[type="password"]',
+              'input[placeholder*="password" i]',
+              'input[placeholder*="密码" i]',
+              'input[id*="password" i]',
+              'input[class*="password" i]'
+            ];
+            
+            for (const selector of passwordSelectors) {
+              try {
+                await page.waitForSelector(selector, { timeout: 3000 });
+                passwordSelector = selector;
+                console.log('找到密码输入框，选择器:', selector);
+                break;
+              } catch (e) {
+                // 继续尝试下一个选择器
+              }
+            }
             
             if (!emailSelector || !passwordSelector) {
               console.log('❌ 无法找到登录表单元素');
