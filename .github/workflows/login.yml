@@ -23,11 +23,10 @@ jobs:
       with:
         node-version: '18'
         
-    - name: Install Playwright
+    - name: Install dependencies
       run: |
         npm init -y
-        npm install playwright
-        npx playwright install chromium
+        npm install puppeteer
         
     - name: Auto Login
       env:
@@ -35,189 +34,115 @@ jobs:
         LOGIN_PASSWORD: ${{ secrets.LOGIN_PASSWORD }}
       run: |
         cat > login.js << 'EOF'
-        const { chromium } = require('playwright');
+        const puppeteer = require('puppeteer');
         
         (async () => {
-          const browser = await chromium.launch();
-          const page = await browser.newPage();
-          
+          let browser;
           try {
+            console.log('启动浏览器...');
+            browser = await puppeteer.launch({
+              headless: true,
+              args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu'
+              ]
+            });
+            
+            const page = await browser.newPage();
+            
+            // 设置用户代理
+            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+            
             console.log('访问登录页面...');
-            await page.goto('https://searcade.com/en/admin');
+            await page.goto('https://searcade.com/en/admin', {
+              waitUntil: 'networkidle2',
+              timeout: 30000
+            });
             
-            console.log('等待页面加载...');
-            await page.waitForLoadState('networkidle');
+            console.log('等待登录表单加载...');
+            await page.waitForSelector('input[name="email"]', { timeout: 10000 });
+            await page.waitForSelector('input[name="password"]', { timeout: 10000 });
             
-            // 额外等待，确保动态内容加载完成
-            await page.waitForTimeout(5000);
+            console.log('填写登录信息...');
+            await page.type('input[name="email"]', process.env.LOGIN_EMAIL);
+            await page.type('input[name="password"]', process.env.LOGIN_PASSWORD);
             
-            console.log('页面加载完成，开始调试...');
+            console.log('点击登录按钮...');
+            // 查找并点击登录按钮（可能的选择器）
+            const loginButton = await page.$('button[type="submit"]') || 
+                               await page.$('input[type="submit"]') || 
+                               await page.$('button:contains("登录")') || 
+                               await page.$('button:contains("Login")');
             
-            // 获取页面标题
-            const title = await page.title();
-            console.log('页面标题:', title);
-            
-            // 获取当前URL
-            const currentUrl = page.url();
-            console.log('当前URL:', currentUrl);
-            
-            // 截图保存（用于调试）
-            await page.screenshot({ path: 'login-page.png' });
-            console.log('已保存页面截图');
-            
-            // 获取页面HTML内容
-            const htmlContent = await page.content();
-            console.log('页面HTML长度:', htmlContent.length);
-            console.log('页面HTML内容（前2000字符）:');
-            console.log(htmlContent.substring(0, 2000));
-            
-            // 检查是否包含预期的输入框
-            const hasEmailInput = htmlContent.includes('id="email_input"');
-            const hasPasswordInput = htmlContent.includes('id="password_input"');
-            console.log('页面是否包含email_input:', hasEmailInput);
-            console.log('页面是否包含password_input:', hasPasswordInput);
-            
-            // 获取所有input元素
-            const inputs = await page.locator('input').all();
-            console.log('页面input元素数量:', inputs.length);
-            
-            for (let i = 0; i < inputs.length; i++) {
-              const input = inputs[i];
-              const id = await input.getAttribute('id');
-              const name = await input.getAttribute('name');
-              const type = await input.getAttribute('type');
-              const className = await input.getAttribute('class');
-              console.log(`Input ${i}: id="${id}", name="${name}", type="${type}", class="${className}"`);
-            }
-            
-            // 如果找不到输入框，可能是页面结构不同，尝试继续
-            if (inputs.length === 0) {
-              console.log('❌ 页面没有任何input元素');
-              process.exit(1);
-            }
-            
-            console.log('尝试查找邮箱输入框...');
-            let emailInput = null;
-            
-            // 按顺序尝试不同的选择器
-            const emailSelectors = [
-              '#email_input',
-              'input[name="email"]',
-              'input[type="email"]',
-              'input[type="text"]'
-            ];
-            
-            for (const selector of emailSelectors) {
-              try {
-                const element = page.locator(selector);
-                const count = await element.count();
-                console.log(`选择器 ${selector} 找到 ${count} 个元素`);
-                
-                if (count > 0) {
-                  emailInput = element.first();
-                  console.log(`✅ 找到邮箱输入框: ${selector}`);
-                  break;
-                }
-              } catch (e) {
-                console.log(`选择器 ${selector} 出错:`, e.message);
-              }
-            }
-            
-            if (!emailInput) {
-              console.log('❌ 所有选择器都未找到邮箱输入框');
-              process.exit(1);
-            }
-            
-            console.log('填写邮箱...');
-            await emailInput.fill(process.env.LOGIN_EMAIL);
-            
-            console.log('查找密码输入框...');
-            let passwordInput = null;
-            
-            const passwordSelectors = [
-              '#password_input',
-              'input[name="password"]',
-              'input[type="password"]'
-            ];
-            
-            for (const selector of passwordSelectors) {
-              try {
-                const element = page.locator(selector);
-                const count = await element.count();
-                console.log(`选择器 ${selector} 找到 ${count} 个元素`);
-                
-                if (count > 0) {
-                  passwordInput = element.first();
-                  console.log(`✅ 找到密码输入框: ${selector}`);
-                  break;
-                }
-              } catch (e) {
-                console.log(`选择器 ${selector} 出错:`, e.message);
-              }
-            }
-            
-            if (!passwordInput) {
-              console.log('❌ 所有选择器都未找到密码输入框');
-              process.exit(1);
-            }
-            
-            console.log('填写密码...');
-            await passwordInput.fill(process.env.LOGIN_PASSWORD);
-            
-            console.log('查找并点击登录按钮...');
-            const buttonSelectors = [
-              'button[type="submit"]',
-              'input[type="submit"]',
-              'button:has-text("Login")',
-              'button:has-text("登录")',
-              '.btn-primary',
-              'button'
-            ];
-            
-            let buttonClicked = false;
-            for (const selector of buttonSelectors) {
-              try {
-                const element = page.locator(selector);
-                const count = await element.count();
-                console.log(`按钮选择器 ${selector} 找到 ${count} 个元素`);
-                
-                if (count > 0) {
-                  await element.first().click();
-                  console.log(`✅ 点击了按钮: ${selector}`);
-                  buttonClicked = true;
-                  break;
-                }
-              } catch (e) {
-                console.log(`按钮选择器 ${selector} 出错:`, e.message);
-              }
-            }
-            
-            if (!buttonClicked) {
-              console.log('未找到登录按钮，尝试按Enter键...');
+            if (loginButton) {
+              await loginButton.click();
+            } else {
+              // 如果找不到按钮，尝试按Enter键
               await page.keyboard.press('Enter');
             }
             
-            console.log('等待登录完成...');
-            await page.waitForLoadState('networkidle');
+            console.log('等待页面跳转...');
+            // 等待跳转到管理页面或登录完成
+            await page.waitForTimeout(5000);
             
-            console.log('检查登录结果...');
-            const finalUrl = page.url();
-            console.log('最终URL:', finalUrl);
+            // 检查是否跳转到管理页面
+            const currentUrl = page.url();
+            console.log('当前页面URL:', currentUrl);
             
-            if (finalUrl.includes('searcade.com/en/admin')) {
-              console.log('✅ 登录成功！');
+            if (currentUrl.includes('searcade.com/en/admin')) {
+              console.log('✅ 登录成功！已跳转到管理页面');
+              process.exit(0);
             } else {
-              console.log('❌ 登录失败，当前URL:', finalUrl);
-              process.exit(1);
+              // 尝试直接访问管理页面验证登录状态
+              console.log('尝试访问管理页面验证登录状态...');
+              await page.goto('https://searcade.com/en/admin', {
+                waitUntil: 'networkidle2',
+                timeout: 30000
+              });
+              
+              const finalUrl = page.url();
+              console.log('最终页面URL:', finalUrl);
+              
+              if (finalUrl.includes('searcade.com/en/admin')) {
+                console.log('✅ 登录成功！可以访问管理页面');
+                process.exit(0);
+              } else {
+                console.log('❌ 登录失败：未能访问管理页面');
+                
+                // 检查是否有错误消息
+                const errorElements = await page.$$('.error, .alert-danger, [class*="error"]');
+                if (errorElements.length > 0) {
+                  for (const element of errorElements) {
+                    const text = await element.textContent();
+                    console.log('错误信息:', text);
+                  }
+                }
+                
+                process.exit(1);
+              }
             }
             
           } catch (error) {
-            console.error('❌ 登录失败:', error.message);
+            console.error('登录过程中发生错误:', error.message);
             process.exit(1);
           } finally {
-            await browser.close();
+            if (browser) {
+              await browser.close();
+            }
           }
         })();
         EOF
         
         node login.js
+        
+    - name: Login Status
+      if: always()
+      run: |
+        if [ $? -eq 0 ]; then
+          echo "登录任务执行成功"
+        else
+          echo "登录任务执行失败"
+          exit 1
+        fi
